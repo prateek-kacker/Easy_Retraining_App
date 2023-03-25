@@ -16,15 +16,22 @@ def get_data_from_excel(excel_file):
 
 
 def show_headers():
-    string = ''
+    '''
+    This function shows headers in excel
+    '''
+
     column_string = list(base_df.columns)
-    return column_string.join(', ')
+    return ', '.join(column_string)
 
 with gr.Blocks() as demo:
     with gr.Row() as row:
         get_data_btn = gr.UploadButton("Get Data from excel")
         show_df_text = gr.DataFrame()
         get_data_btn.upload(fn=get_data_from_excel,inputs=get_data_btn,outputs=show_df_text)
+    with gr.Row() as row:
+        show_headers_btn = gr.Button("Show headers ")
+        show_header_text = gr.Textbox()
+        show_headers_btn.click(fn=show_headers,outputs=show_header_text)
     with gr.Row() as row:
         annotate_unlabeled_btn = gr.Button("Annotate Unlabeled Data")
         annotate_predicted_data_btn = gr.Button("Annotate predicted Data")
