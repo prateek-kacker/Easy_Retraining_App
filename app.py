@@ -52,7 +52,7 @@ def get_data_from_excel(excel_file):
     global base_df
     global MAX_LENGTH
     base_df = pd.read_excel(excel_file.name)
-    base_df['Annoated']=False
+    base_df['Annotated']=False
     base_df['Predicted']=False
     MAX_LENGTH = len(base_df)
     print(base_df)
@@ -86,6 +86,7 @@ def agree_fn(sent1_header, sent2_header, label_header,text_categories):
     LABEL = label_header
     TEXT_CATEGORIES = text_categories.split(',')
     TEXT_CATEGORIES = [category.strip() for category in TEXT_CATEGORIES]
+    print(TEXT_CATEGORIES)
 
     return [gr.update(visible=False), gr.update(visible=False), gr.update(visible=False), gr.update(visible=False),gr.update(visible=True)]
 
@@ -100,15 +101,59 @@ def annotate_data_fn():
     global DF_INDEX
     global NEXT
     global PREVIOUS
-    
+    global TEXT_CATEGORIES
+
     text = base_df.iloc[DF_INDEX][SENT1]
-    unannotated_text= gr.update(text,visible=True)
-    category_radio=gr.update(visible=True)
+    unannotated_text= gr.update(value = text,visible=True)
+    category_radio=gr.update(choices = TEXT_CATEGORIES, visible=True)
     previous_btn = gr.update(visible=True)
     next_btn = gr.update(visible=True)
     accept_btn = gr.update(visible=True)
     return unannotated_text, category_radio, previous_btn, next_btn, accept_btn
 
+def previous_fn():
+    global base_df
+    global DF_INDEX
+    global PREVIOUS
+    global NEXT
+    moving_direction('BACKWARD')
+    text = base_df.iloc[DF_INDEX][SENT1]
+    category = base_df.iloc[DF_INDEX][LABEL]
+    if pd.isnull(category):
+        category = None
+    unannotated_text= gr.update(value = text,visible=True)
+    category_radio=gr.update(value = category,visible=True)
+    return unannotated_text, category_radio
+
+def next_fn():
+    global base_df
+    global DF_INDEX
+    global PREVIOUS
+    global NEXT
+    moving_direction('FORWARD')
+    text = base_df.iloc[DF_INDEX][SENT1]
+    category = base_df.iloc[DF_INDEX][LABEL]
+    if pd.isnull(category):
+        category = None
+    unannotated_text= gr.update(value = text,visible=True)
+    category_radio=gr.update(value = category, visible=True)
+    return unannotated_text, category_radio
+
+def accept_fn(category_radio):
+    global base_df
+    global DF_INDEX
+    global PREVIOUS
+    global NEXT
+    base_df.iloc[DF_INDEX, base_df.columns.get_loc(LABEL)] = category_radio
+    base_df.iloc[DF_INDEX, base_df.columns.get_loc('Annotated')] = True
+    moving_direction('FORWARD')
+    text = base_df.iloc[DF_INDEX][SENT1]
+    category = base_df.iloc[DF_INDEX][LABEL]
+    if pd.isnull(category):
+        category = None
+    unannotated_text= gr.update(value=text,visible=True)
+    category_radio=gr.update(value = category, visible=True)
+    return unannotated_text, category_radio
     
 def train_fn():
     pass    
@@ -180,15 +225,28 @@ with gr.Blocks() as demo:
         annotate_unlabeled_btn = gr.Button("Annotate Unlabeled Data")
 
     with gr.Row() as row:
-        unannotated_text= gr.Textbox(label='Text for annotation')
+        unannotated_text= gr.Textbox(label='Text for annotation',
+                                     visible=False,interactive=True
+                                     )
         category_radio=gr.Radio(TEXT_CATEGORIES,
                                 label='Category',
-                                info='Select the appropriate category for the text'
+                                info='Select the appropriate category for the text',
+                                visible=False,
+                                interactive=True
                                 )
     with gr.Row() as row:
-            previous_btn = gr.Button('Previous')
-            next_btn = gr.Button('Next')
-    accept_btn = gr.Button('Accept the current category and move next')
+            previous_btn = gr.Button('Previous',
+                                     visible=False,
+                                     interactive=True
+                                     )
+            next_btn = gr.Button('Next',
+                                 visible=False,
+                                 interactive=True
+                                 )
+    accept_btn = gr.Button('Accept the current category and move next',
+                           visible=False,
+                           interactive=True
+                           )
     annotate_unlabeled_btn.click(annotate_data_fn,
                                  inputs=[],
                                  outputs=[unannotated_text,
@@ -198,6 +256,11 @@ with gr.Blocks() as demo:
                                           accept_btn
                                           ]
                                 )
+    previous_btn.click(previous_fn, outputs=[unannotated_text,category_radio])
+    next_btn.click(next_fn, outputs=[unannotated_text,category_radio])
+    accept_btn.click(accept_fn, inputs = category_radio, outputs=[unannotated_text,category_radio])
+
+
 
     gr.Markdown(
         '''
