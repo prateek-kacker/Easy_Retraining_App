@@ -7,9 +7,11 @@ import evaluate
 import gradio as gr
 import numpy as np
 import pandas as pd
-from datasets import load_dataset
+from datasets import load_dataset, Dataset
 from transformers import (AutoModelForSequenceClassification, AutoTokenizer,
                           Trainer, TrainingArguments)
+import logging
+logging.basicConfig(filename='Logfile.log', encoding='utf-8')
 
 base_df = pd.DataFrame()
 SENT1 = ''
@@ -23,6 +25,13 @@ NEXT = 1
 PREVIOUS = 0
 tokenizer = AutoTokenizer.from_pretrained("bert-base-cased")
 os.environ["WANDB_DISABLED"] = "true"
+
+def logging_fn():
+    '''
+    Function to log the data in file 
+    '''
+    file = open('Logfile.log', 'r')
+    return file.readlines()
 
 
 def moving_direction(direction, annotation_type):
@@ -59,15 +68,23 @@ def moving_direction(direction, annotation_type):
         PREVIOUS = index[0]
         NEXT = index[1]
         DF_INDEX = index[0]
+    elif DF_INDEX == index[-2] and direction == 'FORWARD':
+        DF_INDEX = index[-1]
+        NEXT = index[-1]
+        PREVIOUS = index[-2]
+    elif DF_INDEX == index[1] and direction == 'BACKWARD':
+        DF_INDEX = index[0]
+        NEXT = index[1]
+        PREVIOUS = index[0]
     elif direction == 'FORWARD':
-        DF_INDEX = index_index+1
-        NEXT = DF_INDEX+1
-        PREVIOUS = DF_INDEX-1
+        DF_INDEX = index[index_index+1]
+        NEXT = index[index_index+2]
+        PREVIOUS = index[index_index]
     elif direction == 'BACKWARD':
-        DF_INDEX = index_index-1
-        NEXT = DF_INDEX+1
-        PREVIOUS = DF_INDEX-1
-
+        DF_INDEX = index[index_index-1]
+        NEXT = index[index_index]
+        PREVIOUS = index[index_index-2]
+    print(f'DF_INDEX {DF_INDEX}, index_index {index_index}, NEXT {NEXT}, PREVIOUS {PREVIOUS}')
 
 def get_data_from_excel(excel_file):
     '''
@@ -134,7 +151,7 @@ def annotate_data_fn():
     global PREVIOUS
     global TEXT_CATEGORIES
 
-    text = base_df.iloc[DF_INDEX][SENT1]
+    text = base_df.loc[DF_INDEX][SENT1]
     unannotated_text = gr.update(value=text, visible=True)
     category_radio = gr.update(choices=TEXT_CATEGORIES, visible=True)
     annotation_type = gr.update(choices=['Unannotated',
@@ -158,7 +175,7 @@ def previous_fn(annotation_type):
     category = base_df.iloc[DF_INDEX][LABEL]
     if pd.isnull(category):
         category = None
-    print(base_df)
+    # print(base_df)
     unannotated_text = gr.update(value=text, visible=True)
     category_radio = gr.update(value=category, visible=True)
     return unannotated_text, category_radio
@@ -187,7 +204,7 @@ def accept_fn(category_radio, annotation_type):
     global NEXT
     base_df.iloc[DF_INDEX, base_df.columns.get_loc(LABEL)] = category_radio
     base_df.iloc[DF_INDEX, base_df.columns.get_loc('Annotated')] = True
-    # print(base_df)
+    print(base_df)
     moving_direction('FORWARD', annotation_type)
     text = base_df.iloc[DF_INDEX][SENT1]
     category = base_df.iloc[DF_INDEX][LABEL]
@@ -199,7 +216,7 @@ def accept_fn(category_radio, annotation_type):
 
 
 def tokenize_function(examples):
-    return tokenizer(examples["text"], padding="max_length", truncation=True)
+    return tokenizer(examples[SENT1], padding="max_length", truncation=True)
 
 def compute_metrics(eval_pred):
     logits, labels = eval_pred
@@ -213,17 +230,45 @@ def train_fn(epochs,
              batch_size
              ):
 
-    dataset = load_dataset("yelp_review_full")
+    # dataset = Dataset.from_pandas(base_df[base_df['Annotated']==True], split='train',)
+    # tokenized_datasets = dataset.map(tokenize_function, batched=True)
+    # train_dataset = tokenized_datasets["train"].shuffle(seed=42)
+    # eval_dataset = tokenized_datasets["test"].shuffle(seed=42)
+
+    # model = AutoModelForSequenceClassification.from_pretrained(
+    #     "bert-base-cased", num_labels=5)
+    # training_args = TrainingArguments(output_dir="test_trainer")
+
+    # training_args = TrainingArguments(
+    #     output_dir="test_trainer", evaluation_strategy="epoch")
+    # trainer = Trainer(
+    #     model=model,
+    #     args=training_args,
+    #     train_dataset=train_dataset,
+    #     eval_dataset=eval_dataset,
+    #     compute_metrics=compute_metrics,
+    # )
+    # trainer.train()
+    global TEXT_CATEGORIES
+    training_df = base_df[base_df['Annotated'] == True]
+    training_df['Label'] = training_df['Label'].map(lambda x: TEXT_CATEGORIES.index(x))
+    dataset = Dataset.from_pandas(training_df).rename_column('Label', 'label')
+    dataset = dataset.train_test_split(test_size=0.2)
     tokenized_datasets = dataset.map(tokenize_function, batched=True)
     train_dataset = tokenized_datasets["train"].shuffle(seed=42)
     eval_dataset = tokenized_datasets["test"].shuffle(seed=42)
-
+    print(train_dataset[0])
+    print(eval_dataset[0])
     model = AutoModelForSequenceClassification.from_pretrained(
-        "bert-base-cased", num_labels=5)
-    training_args = TrainingArguments(output_dir="test_trainer")
-
+        "bert-base-cased", num_labels=2)
+ 
     training_args = TrainingArguments(
-        output_dir="test_trainer", evaluation_strategy="epoch")
+        output_dir="test_trainer", 
+        evaluation_strategy="epoch",
+        num_train_epochs=int(epochs),
+        per_device_train_batch_size=int(batch_size),
+        # label_names=['label']    
+        )
     trainer = Trainer(
         model=model,
         args=training_args,
@@ -232,7 +277,12 @@ def train_fn(epochs,
         compute_metrics=compute_metrics,
     )
     trainer.train()
-
+    predict_df= base_df[base_df['Annotated'] == False].iloc[:50]
+    predict_df['Predicted']=True
+    predict_dataset = Dataset.from_pandas(predict_df)
+    tokenized_predict_datasets = predict_dataset.map(tokenize_function, batched=True)
+    predict_df['Label'] = list( map(lambda x: TEXT_CATEGORIES[x],  trainer.predict(tokenized_predict_datasets).predictions.argmax(axis=1).tolist()))
+    base_df[base_df.index.isin(predict_df.index)]=predict_df
 
 def annotate_predicted_fn():
     pass
@@ -382,63 +432,65 @@ with gr.Blocks() as demo:
                                 )
     train_btn.click(train_fn, inputs=[
                     epochs_text, batch_text], outputs=[train_end_text])
+    
+    gr.Textbox(Value = logging_fn , output = [] , every = 1 , label = 'Log Files' , interactive = True)
 
-    gr.Markdown(
-        """
-		# Section 4 -Verify the output of the model on the data which is not annotated
-		"""
-    )
-    with gr.Row() as row:
-        annotate_predicted_btn = gr.Button("Annotate Predicted Data")
+    # gr.Markdown(
+    #     """
+	# 	# Section 4 -Verify the output of the model on the data which is not annotated
+	# 	"""
+    # )
+    # with gr.Row() as row:
+    #     annotate_predicted_btn = gr.Button("Annotate Predicted Data")
 
-    with gr.Row() as row:
-        predicted_text = gr.Textbox(
-            label='Text for confirmation on predicted data')
-        train_category_radio = gr.Radio(TEXT_CATEGORIES, label='Category',
-                                        info='Appropriate category for the text as predicted by the model')
-    with gr.Row() as row:
-        train_previous_btn = gr.Button('Previous')
-        train_next_btn = gr.Button('Next')
-    train_accept_btn = gr.Button(
-        'Accept the category after verification and move to next')
-    annotate_predicted_btn.click(annotate_predicted_fn,
-                                 inputs=[],
-                                 outputs=[predicted_text,
-                                          train_category_radio,
-                                          train_previous_btn,
-                                          train_next_btn,
-                                          train_accept_btn
-                                          ]
-                                 )
+    # with gr.Row() as row:
+    #     predicted_text = gr.Textbox(
+    #         label='Text for confirmation on predicted data')
+    #     train_category_radio = gr.Radio(TEXT_CATEGORIES, label='Category',
+    #                                     info='Appropriate category for the text as predicted by the model')
+    # with gr.Row() as row:
+    #     train_previous_btn = gr.Button('Previous')
+    #     train_next_btn = gr.Button('Next')
+    # train_accept_btn = gr.Button(
+    #     'Accept the category after verification and move to next')
+    # annotate_predicted_btn.click(annotate_predicted_fn,
+    #                              inputs=[],
+    #                              outputs=[predicted_text,
+    #                                       train_category_radio,
+    #                                       train_previous_btn,
+    #                                       train_next_btn,
+    #                                       train_accept_btn
+    #                                       ]
+    #                              )
 
-    gr.Markdown(
-        """
-		# Section 5 - Verify the entire annotated data once again
-		"""
-    )
+    # gr.Markdown(
+    #     """
+	# 	# Section 5 - Verify the entire annotated data once again
+	# 	"""
+    # )
 
-    with gr.Row() as row:
-        verify_entire_btn = gr.Button("Verify Entire Data")
+    # with gr.Row() as row:
+    #     verify_entire_btn = gr.Button("Verify Entire Data")
 
-    with gr.Row() as row:
-        predicted_entire_text = gr.Textbox(
-            label='Text for confirmation on entire data')
-        predicted_entire_category_radio = gr.Radio(
-            TEXT_CATEGORIES, label='Category', info='Appropriate category for the text as annotated by you')
-    with gr.Row() as row:
-        predict_entire_previous_btn = gr.Button('Previous')
-        predict_entire_next_btn = gr.Button('Next')
-    predict_entire_accept_btn = gr.Button(
-        'Accept the category after verification and move to next')
-    verify_entire_btn.click(verify_entire_predicted_fn,
-                            inputs=[],
-                            outputs=[predicted_entire_text,
-                                     predicted_entire_category_radio,
-                                     predict_entire_previous_btn,
-                                     predict_entire_next_btn,
-                                     predict_entire_accept_btn
-                                     ]
-                            )
+    # with gr.Row() as row:
+    #     predicted_entire_text = gr.Textbox(
+    #         label='Text for confirmation on entire data')
+    #     predicted_entire_category_radio = gr.Radio(
+    #         TEXT_CATEGORIES, label='Category', info='Appropriate category for the text as annotated by you')
+    # with gr.Row() as row:
+    #     predict_entire_previous_btn = gr.Button('Previous')
+    #     predict_entire_next_btn = gr.Button('Next')
+    # predict_entire_accept_btn = gr.Button(
+    #     'Accept the category after verification and move to next')
+    # verify_entire_btn.click(verify_entire_predicted_fn,
+    #                         inputs=[],
+    #                         outputs=[predicted_entire_text,
+    #                                  predicted_entire_category_radio,
+    #                                  predict_entire_previous_btn,
+    #                                  predict_entire_next_btn,
+    #                                  predict_entire_accept_btn
+    #                                  ]
+    #                         )
 
 
 demo.launch()
