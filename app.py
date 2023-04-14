@@ -11,7 +11,11 @@ from datasets import load_dataset, Dataset
 from transformers import (AutoModelForSequenceClassification, AutoTokenizer,
                           Trainer, TrainingArguments)
 import logging
-logging.basicConfig(filename='Logfile.log', encoding='utf-8')
+logging.basicConfig(filename='Logfile.log', encoding='utf-8', level=logging.INFO, format='%(asctime)s %(message)s')
+logger = logging.getLogger()
+print = logger.info
+
+
 
 base_df = pd.DataFrame()
 SENT1 = ''
@@ -31,8 +35,11 @@ def logging_fn():
     Function to log the data in file 
     '''
     file = open('Logfile.log', 'r')
-    return file.readlines()
+    output = ''.join(file.readlines())
 
+    # print(output)
+    
+    return output
 
 def moving_direction(direction, annotation_type):
     '''
@@ -433,64 +440,6 @@ with gr.Blocks() as demo:
     train_btn.click(train_fn, inputs=[
                     epochs_text, batch_text], outputs=[train_end_text])
     
-    gr.Textbox(Value = logging_fn , output = [] , every = 1 , label = 'Log Files' , interactive = True)
+    gr.Textbox(value = logging_fn , output = [] , every = 1 , label = 'Log Files' , interactive = True)
 
-    # gr.Markdown(
-    #     """
-	# 	# Section 4 -Verify the output of the model on the data which is not annotated
-	# 	"""
-    # )
-    # with gr.Row() as row:
-    #     annotate_predicted_btn = gr.Button("Annotate Predicted Data")
-
-    # with gr.Row() as row:
-    #     predicted_text = gr.Textbox(
-    #         label='Text for confirmation on predicted data')
-    #     train_category_radio = gr.Radio(TEXT_CATEGORIES, label='Category',
-    #                                     info='Appropriate category for the text as predicted by the model')
-    # with gr.Row() as row:
-    #     train_previous_btn = gr.Button('Previous')
-    #     train_next_btn = gr.Button('Next')
-    # train_accept_btn = gr.Button(
-    #     'Accept the category after verification and move to next')
-    # annotate_predicted_btn.click(annotate_predicted_fn,
-    #                              inputs=[],
-    #                              outputs=[predicted_text,
-    #                                       train_category_radio,
-    #                                       train_previous_btn,
-    #                                       train_next_btn,
-    #                                       train_accept_btn
-    #                                       ]
-    #                              )
-
-    # gr.Markdown(
-    #     """
-	# 	# Section 5 - Verify the entire annotated data once again
-	# 	"""
-    # )
-
-    # with gr.Row() as row:
-    #     verify_entire_btn = gr.Button("Verify Entire Data")
-
-    # with gr.Row() as row:
-    #     predicted_entire_text = gr.Textbox(
-    #         label='Text for confirmation on entire data')
-    #     predicted_entire_category_radio = gr.Radio(
-    #         TEXT_CATEGORIES, label='Category', info='Appropriate category for the text as annotated by you')
-    # with gr.Row() as row:
-    #     predict_entire_previous_btn = gr.Button('Previous')
-    #     predict_entire_next_btn = gr.Button('Next')
-    # predict_entire_accept_btn = gr.Button(
-    #     'Accept the category after verification and move to next')
-    # verify_entire_btn.click(verify_entire_predicted_fn,
-    #                         inputs=[],
-    #                         outputs=[predicted_entire_text,
-    #                                  predicted_entire_category_radio,
-    #                                  predict_entire_previous_btn,
-    #                                  predict_entire_next_btn,
-    #                                  predict_entire_accept_btn
-    #                                  ]
-    #                         )
-
-
-demo.launch()
+demo.queue().launch()
