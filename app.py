@@ -221,7 +221,9 @@ def accept_fn(category_radio, annotation_type):
     category_radio = gr.update(value=category, visible=True)
     return unannotated_text, category_radio
 
-
+def download_data_fn():
+    pd.to_excel(base_df, 'annotated_data.xlsx', index=False)
+    
 def tokenize_function(examples):
     return tokenizer(examples[SENT1], padding="max_length", truncation=True)
 
@@ -441,5 +443,11 @@ with gr.Blocks() as demo:
                     epochs_text, batch_text], outputs=[train_end_text])
     
     gr.Textbox(value = logging_fn , output = [] , every = 1 , label = 'Log Files' , interactive = True)
+    
+    with gr.Row() as row:
+        download_data_btn = gr.Button("Download Data")
+        display_textbox = gr.Textbox()
+        download_data_btn.click(fn=download_data_fn,
+                               outputs=display_textbox)
 
 demo.queue().launch()
