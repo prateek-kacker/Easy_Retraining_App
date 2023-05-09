@@ -222,7 +222,7 @@ def accept_fn(category_radio, annotation_type):
     return unannotated_text, category_radio
 
 def download_data_fn():
-    pd.to_excel(base_df, 'annotated_data.xlsx', index=False)
+    base_df.to_excel( 'annotated_data.xlsx', index=False)
     
 def tokenize_function(examples):
     return tokenizer(examples[SENT1], padding="max_length", truncation=True)
